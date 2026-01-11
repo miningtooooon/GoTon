@@ -1,8 +1,0 @@
-{
-  "name": "GoTon - PREMIUM",
-  "description": "A high-performance mining and referral platform for Telegram, featuring cloud mining, faucet, ads, and real-time referral tracking using Firebase.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
-}
