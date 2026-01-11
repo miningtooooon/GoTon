@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GoTon- PREMIUM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://sad.adsgram.ai/js/adsgram-ad-sdk.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+        const SUPABASE_URL = "https://nmkealemhllgeyqubdlz.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_GlWxWT8L-N9rULzD56yvrQ_XP9SilUj";
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        const tg = window.Telegram?.WebApp;
+        window.tg = tg; 
+
+        if (tg && tg.HapticFeedback) {
+            const originalImpact = tg.HapticFeedback.impactOccurred;
+            const originalNotification = tg.HapticFeedback.notificationOccurred;
+            tg.HapticFeedback.impactOccurred = function(style) {
+                if (tg.isVersionAtLeast('6.1')) originalImpact.call(tg.HapticFeedback, style);
+            };
+            tg.HapticFeedback.notificationOccurred = function(type) {
+                if (tg.isVersionAtLeast('6.1')) originalNotification.call(tg.HapticFeedback, type);
+            };
+        }
+
+        const userId = String(tg?.initDataUnsafe?.user?.id || "6472891");
+        let referralId = null;
+        if (tg?.initDataUnsafe?.start_param) {
+            referralId = String(tg.initDataUnsafe.start_param).trim();
+            if (referralId === "" || referralId === userId) referralId = null;
+        }
+
+        let AdController = { show: () => Promise.resolve() };
+        if (window.Adsgram) {
+            AdController = window.Adsgram.init({ blockId: "4364" });
+        }
+
+        let userData = { balance: 0, refs: 0, adsCount: 3 };
+        let GLOBAL_CONFIG = {
+            mining_profit: 0.00001, mining_time: 3600, faucet_profit: 0.00005,
+            faucet_time: 3600, ads_profit: 0.0001, ads_daily_limit: 3,
+            ref_bonus: 0.0001, min_withdraw: 0.01 
+        };
+
+        async function syncGlobalConfig() {
+            try {
+                const { data: config } = await supabase.from('settings').select('*').eq('id', 'master');
+                if (config && config.length > 0) { 
+                    GLOBAL_CONFIG = config[0]; 
+                    updateUI(); 
+                }
+
+                const { data: notice } = await supabase.from('settings').select('*').eq('id', 'notice');
+                if (notice && notice.length > 0 && notice[0].text && tg) {
+                    tg.showAlert("📢 SYSTEM NOTICE:\n\n" + notice[0].text);
+                }
+            } catch (e) { console.error("Config Sync Error:", e); }
+        }
+
+        window.flyProfit = (cardId) => {
+            const card = document.getElementById(cardId);
+            const balanceEl = document.getElementById('main-balance');
+            if(!card || !balanceEl) return;
+            const cardRect = card.getBoundingClientRect();
+            const balanceRect = balanceEl.getBoundingClientRect();
+            for (let i = 0; i < 8; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'fa-solid fa-gem fly-particle';
+                particle.style.left = (cardRect.left + cardRect.width/2) + 'px';
+                particle.style.top = (cardRect.top + cardRect.height/2) + 'px';
+                const destinationX = (balanceRect.left + balanceRect.width/2) - (cardRect.left + cardRect.width/2);
+                const destinationY = (balanceRect.top + balanceRect.height/2) - (cardRect.top + balanceRect.height/2);
+                particle.style.setProperty('--destX', `${destinationX}px`);
+                particle.style.setProperty('--destY', `${destinationY}px`);
+                particle.style.animationDelay = (i * 0.1) + 's';
+                document.body.appendChild(particle);
+                setTimeout(() => particle.remove(), 1000);
+            }
+        };
+
+        async function initApp() {
+            await syncGlobalConfig(); 
+            
+            try {
+                let { data: users, error } = await supabase.from('users').select('*').eq('id', userId);
+
+                if (!users || users.length === 0) {
+                    const initialData = { 
+                        id: userId,
+                        balance: 0, 
+                        miningStart: 0, 
+                        faucetStart: 0, 
+                        adsCount: Number(GLOBAL_CONFIG.ads_daily_limit || 3), 
+                        lastAdsTime: 0, 
+                        adsResetTime: 0, 
+                        adsRunning: false, 
+                        refs: 0, 
+                        invitedBy: referralId,
+                        username: tg?.initDataUnsafe?.user?.username || "Anonymous",
+                        status: "active"
+                    };
+
+                    await supabase.from('users').insert([initialData]);
+                    
+                    if (referralId) {
+                        const { data: inviters } = await supabase.from('users').select('*').eq('id', referralId);
+                        if (inviters && inviters.length > 0) {
+                            const inviter = inviters[0];
+                            const bonus = Number(GLOBAL_CONFIG.ref_bonus || 0.0001);
+                            await supabase.from('users').update({
+                                balance: Number(inviter.balance || 0) + bonus,
+                                refs: Number(inviter.refs || 0) + 1
+                            }).eq('id', referralId);
+                        }
+                    }
+                    userData = initialData;
+                } else {
+                    const user = users[0];
+                    if(user.status === 'banned') {
+                        document.body.innerHTML = `<div class="fixed inset-0 bg-black flex flex-col items-center justify-center p-10 text-center"><h1 class="text-white text-2xl font-black uppercase mb-2">Account Restricted</h1></div>`;
+                        return;
+                    }
+                    userData = user;
+                    checkOfflineProfits(user);
+                }
+            } catch(e) { 
+                console.error("Initialization Error:", e);
+                tg?.showAlert("Connection Error. Please restart the bot.");
+            }
+
+            supabase.channel('users_realtime').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${userId}` }, 
+            payload => { userData = payload.new; updateUI(); }).subscribe();
+
+            updateUI();
+            startAllTimers();
+            loadWithdrawHistory();
+            loadReferralList();
+        }
+
+        function checkOfflineProfits(data) {
+            const now = Date.now();
+            let totalToClaim = 0;
+            const batchUpdate = {};
+            if (data.miningStart > 0 && (now - data.miningStart)/1000 >= GLOBAL_CONFIG.mining_time) {
+                totalToClaim += Number(GLOBAL_CONFIG.mining_profit); batchUpdate.miningStart = 0;
+            }
+            if (data.faucetStart > 0 && (now - data.faucetStart)/1000 >= GLOBAL_CONFIG.faucet_time) {
+                totalToClaim += Number(GLOBAL_CONFIG.faucet_profit); batchUpdate.faucetStart = 0;
+            }
+            if (totalToClaim > 0) {
+                batchUpdate.balance = Number(data.balance) + totalToClaim;
+                supabase.from('users').update(batchUpdate).eq('id', userId);
+                showProfitModal(totalToClaim);
+            }
+        }
+
+        window.createCoins = () => {
+            for (let i = 0; i < 30; i++) {
+                const coin = document.createElement('div');
+                coin.className = 'coin-particle fa-solid fa-gem'; 
+                coin.style.left = Math.random() * 100 + 'vw';
+                coin.style.animationDuration = (Math.random() * 2 + 1) + 's';
+                coin.style.fontSize = (Math.random() * 15 + 15) + 'px';
+                coin.style.opacity = Math.random();
+                document.body.appendChild(coin);
+                setTimeout(() => coin.remove(), 3000);
+            }
+        };
+
+        window.showProfitModal = (amount) => {
+            const modal = document.getElementById('profit-modal');
+            const display = document.getElementById('profit-amount-display');
+            if(!modal || !display) return;
+            display.innerText = Number(amount || 0).toFixed(5);
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            createCoins();
+            if(tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+        };
+
+        window.closeProfitModal = () => {
+            const modal = document.getElementById('profit-modal');
+            if(modal) { 
+                modal.classList.add('modal-exit');
+                setTimeout(() => {
+                    modal.classList.add('hidden'); 
+                    modal.classList.remove('flex', 'modal-exit');
+                }, 300);
+            }
+        };
+
+        window.showPage = (pageId) => {
+            document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+            const targetPage = document.getElementById(pageId);
+            if(targetPage) targetPage.classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            const clickedBtn = Array.from(document.querySelectorAll('.nav-btn')).find(btn => 
+                (pageId === 'home-page' && btn.querySelector('.fa-microchip')) ||
+                (pageId === 'friends-page' && btn.querySelector('.fa-user-plus')) ||
+                (pageId === 'withdraw-page' && btn.querySelector('.fa-vault'))
+            );
+            if(clickedBtn) clickedBtn.classList.add('active');
+            
+            if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+            
+            const isLight = document.body.classList.contains('light-mode');
+            if (isLight) {
+                document.body.style.background = pageId === 'home-page' ? "#f8fafc" : (pageId === 'friends-page' ? "#f5f3ff" : "#f0f9ff");
+            } else {
+                document.body.style.background = pageId === 'home-page' ? "#000000" : (pageId === 'friends-page' ? "#0d0216" : "#020b16");
+            }
+        };
+
+        window.copyRefLink = () => {
+            const link = `https://t.me/Gotonfree_bot?start=${userId}`; 
+            navigator.clipboard.writeText(link);
+            window.showToast("Link copied to clipboard!");
+        };
+
+        function startAllTimers() {
+            setInterval(syncMining, 100); 
+            setInterval(syncFaucet, 100);
+            setInterval(syncAds, 100);
+        }
+
+        window.startMining = async () => {
+            if(userData.miningStart > 0) return;
+            try { await AdController.show(); } catch (e) {}
+            triggerEffect('mining-card');
+            await supabase.from('users').update({ miningStart: Date.now() }).eq('id', userId);
+        };
+
+        function syncMining() {
+            const card = document.getElementById('mining-card');
+            const timer = document.getElementById('m-timer');
+            const profit = document.getElementById('m-profit');
+            if(!card || !timer || !profit) return;
+            if (userData.miningStart > 0) {
+                const el = (Date.now() - userData.miningStart)/1000;
+                if(el >= GLOBAL_CONFIG.mining_time) {
+                    flyProfit('mining-card'); 
+                    supabase.from('users').update({balance: Number(userData.balance) + Number(GLOBAL_CONFIG.mining_profit), miningStart: 0}).eq('id', userId);
+                    showProfitModal(GLOBAL_CONFIG.mining_profit);
+                } else {
+                    card.classList.add('pulse-blue');
+                    timer.innerText = formatTime(GLOBAL_CONFIG.mining_time - el);
+                    profit.innerText = ((el/GLOBAL_CONFIG.mining_time) * GLOBAL_CONFIG.mining_profit).toFixed(7);
+                }
+            } else {
+                card.classList.remove('pulse-blue'); timer.innerText = "READY"; profit.innerText = "0.0000000";
+            }
+        }
+
+        window.claimFaucet = async () => {
+            if(userData.faucetStart > 0) return;
+            try { await AdController.show(); } catch (e) {}
+            triggerEffect('faucet-card');
+            await supabase.from('users').update({ faucetStart: Date.now() }).eq('id', userId);
+        };
+
+        function syncFaucet() {
+            const card = document.getElementById('faucet-card');
+            const machine = document.getElementById('machine-anim');
+            const timer = document.getElementById('f-timer');
+            const profit = document.getElementById('f-profit');
+            if(!card || !timer || !profit) return;
+            
+            // إصلاح: جلب الربح من GLOBAL_CONFIG المستلم من قاعدة البيانات
+            const faucetProfitAmount = Number(GLOBAL_CONFIG.faucet_profit || 0.00005);
+
+            if (userData.faucetStart > 0) {
+                const el = (Date.now() - userData.faucetStart)/1000;
+                if(el >= GLOBAL_CONFIG.faucet_time) {
+                    flyProfit('faucet-card'); 
+                    supabase.from('users').update({balance: Number(userData.balance) + faucetProfitAmount, faucetStart: 0}).eq('id', userId);
+                    if(machine) machine.classList.remove('active-mining');
+                    showProfitModal(faucetProfitAmount);
+                } else {
+                    card.classList.add('pulse-gold'); if(machine) machine.classList.add('active-mining');
+                    timer.innerText = formatTime(GLOBAL_CONFIG.faucet_time - el);
+                    profit.innerText = ((el/GLOBAL_CONFIG.faucet_time) * faucetProfitAmount).toFixed(7);
+                }
+            } else {
+                card.classList.remove('pulse-gold'); if(machine) machine.classList.remove('active-mining');
+                timer.innerText = "READY"; profit.innerText = "0.0000000";
+            }
+        }
+
+        window.watchAd = async function() {
+            const now = Date.now();
+            if (userData.adsCount === 0 && now >= userData.adsResetTime) {
+                await supabase.from('users').update({ adsCount: Number(GLOBAL_CONFIG.ads_daily_limit), adsResetTime: 0, adsRunning: false }).eq('id', userId);
+                return;
+            }
+            if (userData.adsRunning || (userData.adsCount <= 0 && now < userData.adsResetTime)) return;
+            try { await AdController.show(); } catch (e) {}
+            triggerEffect('ads-card');
+            await supabase.from('users').update({ lastAdsTime: now, adsRunning: true }).eq('id', userId);
+        };
+
+        function syncAds() {
+            const card = document.getElementById('ads-card');
+            const timer = document.getElementById('ads-timer');
+            const profit = document.getElementById('a-profit');
+            const btn = document.getElementById('ads-btn');
+            if(!card || !timer || !profit || !btn) return;
+            const now = Date.now();
+            if (userData.adsRunning) {
+                const elapsed = (now - userData.lastAdsTime) / 1000;
+                if (elapsed >= 60) { finishAd(); } else {
+                    card.classList.add('pulse-green'); timer.innerText = formatTime(60 - elapsed);
+                    profit.innerText = ((elapsed/60) * GLOBAL_CONFIG.ads_profit).toFixed(7);
+                    btn.disabled = true; btn.innerText = "RUNNING";
+                }
+            } else {
+                card.classList.remove('pulse-green'); btn.disabled = false; btn.innerText = "WATCH AD"; profit.innerText = "0.0000000";
+                if (userData.adsCount > 0) {
+                    timer.innerHTML = `READY (<span id="ads-count">${userData.adsCount}</span>/${GLOBAL_CONFIG.ads_daily_limit})`;
+                } else {
+                    const remainingReset = Math.max(0, (userData.adsResetTime - now)/1000);
+                    timer.innerText = remainingReset > 0 ? formatTime(remainingReset) : "RESETTING";
+                }
+            }
+        }
+
+        async function finishAd() {
+            const now = Date.now();
+            let nc = Number(userData.adsCount || 1) - 1;
+            let rt = (nc === 0) ? now + (24 * 3600 * 1000) : 0; 
+            flyProfit('ads-card'); 
+            await supabase.from('users').update({ balance: Number(userData.balance) + Number(GLOBAL_CONFIG.ads_profit), adsCount: nc, adsRunning: false, adsResetTime: rt }).eq('id', userId);
+            if(tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            showProfitModal(GLOBAL_CONFIG.ads_profit);
+        }
+
+        function triggerEffect(id) {
+            const el = document.getElementById(id);
+            if(el) { el.style.transform = "scale(0.95)"; setTimeout(() => el.style.transform = "scale(1)", 150); }
+            if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+        }
+
+        function updateUI() {
+            const b = Number(userData?.balance || 0);
+            const fb = b.toFixed(5);
+            if(document.getElementById('main-balance')) document.getElementById('main-balance').innerText = fb;
+            if(document.getElementById('wallet-balance')) document.getElementById('wallet-balance').innerText = fb;
+            if(document.getElementById('ads-count')) document.getElementById('ads-count').innerText = userData.adsCount || 0;
+            if(document.getElementById('ref-count')) document.getElementById('ref-count').innerText = userData.refs || 0;
+            if(document.getElementById('ref-earnings')) document.getElementById('ref-earnings').innerText = ((userData.refs || 0) * (GLOBAL_CONFIG.ref_bonus || 0.0001)).toFixed(4);
+            if(document.getElementById('ref-bonus-text')) document.getElementById('ref-bonus-text').innerText = (GLOBAL_CONFIG.ref_bonus || 0.0001).toFixed(4);
+        }
+
+        function formatTime(sec) {
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const s = Math.floor(sec % 60);
+            return h > 0 ? `${h}h ${m}m` : `${m}:${s < 10 ? '0'+s : s}`;
+        }
+
+        window.processWithdraw = async () => {
+            const wallet = document.getElementById('withdraw-wallet').value;
+            const amountInput = document.getElementById('withdraw-amount').value;
+            const amount = parseFloat(amountInput);
+            const btn = document.querySelector("#withdraw-page button");
+            if(!wallet || wallet.length < 5) { tg?.showAlert("Enter a valid wallet!"); return; }
+            if(isNaN(amount) || amount < (GLOBAL_CONFIG.min_withdraw || 0.01)) { tg?.showAlert(`Min withdrawal is ${GLOBAL_CONFIG.min_withdraw || 0.01} TON`); return; }
+            if(amount > (userData.balance || 0)) { tg?.showAlert("Insufficient balance!"); return; }
+            try {
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+                await supabase.from('users').update({ balance: Number(userData.balance) - amount }).eq('id', userId);
+                await supabase.from('withdrawals').insert([{ userId, wallet, amount, status: "Pending", date: Date.now() }]);
+                
+                const BOT_TOKEN = "8428693437:AAErFNnW_cmlrfgQMpqv70gcLbYmspDvzZI";
+                const CHANNEL_ID = "@gotonpay"; 
+                const shortW = wallet.substring(0, 5) + "..." + wallet.substring(wallet.length - 5);
+                const userName = userData.username || "User_" + userId.substring(0,4);
+                const message = `🌟 **New Withdrawal Request!**\n👤 **User:** ${userName}\n🆔 **ID:** \`${userId}\`\n💰 **Amount:** \`${amount.toFixed(4)} TON\`\n💳 **Wallet:** \`${shortW}\`\n✅ **Status:** Pending Review`;
+                
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: CHANNEL_ID, text: message, parse_mode: "Markdown" })
+                });
+                
+                if(tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                window.showToast("Withdrawal Request Sent!"); 
+                createCoins();
+                btn.innerHTML = 'Request Payout';
+                document.getElementById('withdraw-amount').value = "";
+                loadWithdrawHistory();
+            } catch(e) { tg?.showAlert("Error: " + (e.message || e)); btn.innerHTML = 'Request Payout'; }
+        };
+
+        window.showToast = (msg) => {
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-12 left-1/2 -translate-x-1/2 bg-white/10 backdrop-blur-xl border border-white/20 text-white px-6 py-3 rounded-2xl font-bold shadow-2xl z-[2000] flex items-center gap-3 animate-toastIn';
+            toast.innerHTML = `<div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center"><i class="fa-solid fa-check text-[10px] text-black"></i></div><span>${msg}</span>`;
+            document.body.appendChild(toast); 
+            setTimeout(() => {
+                toast.classList.replace('animate-toastIn', 'animate-toastOut');
+                setTimeout(() => toast.remove(), 400);
+            }, 3000);
+        }
+
+        async function loadWithdrawHistory() {
+            const { data: withdrawals } = await supabase.from('withdrawals').select('*').eq('userId', userId).order('date', { ascending: false }).limit(10);
+            const list = document.getElementById('withdraw-history');
+            if(!list || !withdrawals) return; list.innerHTML = "";
+            withdrawals.forEach(data => {
+                let sClass = data.status === "Paid" ? "bg-green-500/20 text-green-500" : (data.status === "Rejected" ? "bg-red-500/20 text-red-500" : "bg-yellow-500/20 text-yellow-500");
+                list.innerHTML += `<div class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/10 mb-2">
+                    <div class="text-left"><p class="text-xs font-bold text-white">${Number(data.amount).toFixed(5)} TON</p><p class="text-[9px] text-gray-500">${new Date(data.date).toLocaleDateString()}</p></div>
+                    <span class="text-[9px] px-2 py-1 rounded ${sClass} font-bold uppercase">${data.status || 'Pending'}</span></div>`;
+            });
+        }
+
+        async function loadReferralList() {
+            const { data: users } = await supabase.from('users').select('*').eq('invitedBy', userId).limit(50);
+            const list = document.getElementById('ref-list-container');
+            if(!list) return; list.innerHTML = (!users || users.length === 0) ? '<p class="text-[10px] text-gray-600 italic text-center py-4">No active nodes connected yet...</p>' : "";
+            if (users) {
+                users.forEach(data => {
+                    list.innerHTML += `<div class="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 mb-2 group transition-all hover:bg-white/10">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-[#c084fc]/20 flex items-center justify-center text-[12px] text-[#c084fc] group-hover:scale-110 transition-transform"><i class="fa-solid fa-user"></i></div>
+                            <div>
+                                <p class="text-[11px] font-bold text-gray-200">ID: ${data.id.slice(0,8)}...</p>
+                                <p class="text-[8px] text-gray-500 uppercase">Active Node</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] text-green-500 font-black">+${Number(GLOBAL_CONFIG.ref_bonus || 0.0001).toFixed(4)} TON</span>
+                    </div>`;
+                });
+            }
+        }
+
+        initApp();
+        window.openFAQ = () => { 
+            const m = document.getElementById('faq-modal');
+            m.classList.remove('hidden'); 
+            m.classList.add('flex');
+            if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+        };
+        window.closeFAQ = () => { 
+            const m = document.getElementById('faq-modal');
+            m.classList.add('modal-exit');
+            setTimeout(() => {
+                m.classList.replace('flex', 'hidden'); 
+                m.classList.remove('modal-exit');
+            }, 300);
+        };
+
+        window.toggleTheme = () => {
+            document.body.classList.toggle('light-mode');
+            const icon = document.querySelector('#theme-toggle-btn i');
+            if (document.body.classList.contains('light-mode')) {
+                icon.className = 'fa-solid fa-moon';
+            } else {
+                icon.className = 'fa-solid fa-sun';
+            }
+            const activePage = document.querySelector('.page:not(.hidden)');
+            if (activePage) window.showPage(activePage.id);
+            if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+        };
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+        
+        :root {
+            --gold-primary: #ffd700;
+            --gold-secondary: #ffae00;
+            --blue-glow: rgba(59, 130, 246, 0.5);
+            --green-glow: rgba(34, 197, 94, 0.5);
+            --gold-glow: rgba(255, 215, 0, 0.5);
+            --bg-page: #000;
+            --text-main: #fff;
+            --card-gradient: radial-gradient(circle at top left, rgba(60, 60, 60, 0.4), rgba(10, 10, 10, 0.7));
+            --card-border: rgba(255, 255, 255, 0.1);
+            --nav-bg: rgba(10, 10, 10, 0.95);
+        }
+
+        body.light-mode {
+            --bg-page: #f8fafc;
+            --text-main: #0f172a;
+            --card-gradient: linear-gradient(135deg, #ffffff, #f1f5f9);
+            --card-border: rgba(0, 0, 0, 0.05);
+            --nav-bg: rgba(255, 255, 255, 0.9);
+            color: var(--text-main);
+        }
+
+        body { background: var(--bg-page); color: var(--text-main); font-family: 'Cairo', sans-serif; padding: 15px; transition: background 0.5s ease, color 0.5s ease; overflow-x: hidden; -webkit-tap-highlight-color: transparent; position: relative; }
+        
+        [data-tooltip] { position: relative; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 110%;
+            left: 50%;
+            transform: translateX(-50%) scale(0.8);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 2000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(4px);
+        }
+        .light-mode [data-tooltip]::after {
+            background: rgba(255, 255, 255, 0.98);
+            color: #0f172a;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        [data-tooltip]:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+            bottom: 125%;
+        }
+        .theme-btn[data-tooltip]::after, .faq-btn[data-tooltip]::after {
+            top: 110%;
+            bottom: auto;
+        }
+        .theme-btn[data-tooltip]:hover::after, .faq-btn[data-tooltip]:hover::after {
+            top: 125%;
+            bottom: auto;
+        }
+
+        .bg-particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden; pointer-events: none; }
+        .particle { position: absolute; background: radial-gradient(circle, var(--gold-primary) 0%, transparent 70%); border-radius: 50%; opacity: 0.3; filter: blur(5px); animation: floatParticle linear infinite; }
+        @keyframes floatParticle {
+            0% { transform: translate(0, 0) scale(1); opacity: 0; }
+            20% { opacity: 0.4; }
+            80% { opacity: 0.4; }
+            100% { transform: translate(var(--tw-translateX), var(--tw-translateY)) scale(1.5); opacity: 0; }
+        }
+
+        @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        .shimmer-container { position: relative; overflow: hidden; }
+        .shimmer-container::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); animation: shimmer 2.5s infinite; }
+
+        .free-top-badge { position: absolute; top: 15px; left: 15px; background: var(--gold-primary); color: #000; padding: 4px 12px; border-radius: 8px; font-size: 10px; font-weight: 900; text-transform: uppercase; box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); z-index: 60; animation: badgePulse 2s infinite; }
+        @keyframes badgePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+        .fly-particle { position: fixed; color: var(--gold-primary); font-size: 20px; z-index: 2000; pointer-events: none; animation: flyToBalance 0.8s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards; }
+        @keyframes flyToBalance { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--destX), var(--destY)) scale(0.2); opacity: 0; } }
+        
+        .coin-particle { position: fixed; top: -50px; color: #0088cc; z-index: 9999; pointer-events: none; animation: fall linear forwards; }
+        @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+        
+        .neon-profit { color: #39FF14; font-weight: 900; text-shadow: 0 0 12px rgba(57, 255, 20, 0.8); }
+        .light-mode .neon-profit { color: #16a34a; text-shadow: none; }
+
+        .card { background: var(--card-gradient); border-radius: 1.5rem; padding: 15px; border: 1px solid var(--card-border); text-align: center; display: flex; flex-direction: column; justify-content: space-between; height: 190px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden; }
+        .light-mode .card { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        .card:active { transform: scale(0.98); }
+
+        .vibrant-blue { background-image: radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.15), transparent 70%), var(--card-gradient); border-color: rgba(59, 130, 246, 0.3); }
+        .vibrant-green { background-image: radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.15), transparent 70%), var(--card-gradient); border-color: rgba(34, 197, 94, 0.3); }
+        .vibrant-gold { background-image: radial-gradient(circle at bottom right, rgba(255, 215, 0, 0.15), transparent 70%), var(--card-gradient); border-color: rgba(255, 215, 0, 0.3); }
+        .vibrant-purple { background-image: radial-gradient(circle at bottom right, rgba(192, 132, 252, 0.15), transparent 70%), var(--card-gradient); border-color: rgba(192, 132, 252, 0.3); }
+        .vibrant-sky { background-image: radial-gradient(circle at bottom right, rgba(96, 165, 250, 0.15), transparent 70%), var(--card-gradient); border-color: rgba(96, 165, 250, 0.3); }
+
+        .btn-gold { background: linear-gradient(to bottom, var(--gold-primary), var(--gold-secondary)); color: #000; font-weight: 900; border-radius: 1rem; width: 100%; padding: 10px; font-size: 11px; text-transform: uppercase; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .btn-gold:active { transform: scale(0.95); box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        
+        .nav-bar { background: var(--nav-bg); border-top: 1px solid rgba(255, 255, 255, 0.05); position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; padding: 10px 15px 25px 15px; z-index: 100; backdrop-filter: blur(25px); transition: background 0.5s ease; }
+        .nav-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px; border-radius: 1.2rem; font-weight: 900; text-transform: uppercase; font-size: 8px; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); color: rgba(255, 255, 255, 0.4); background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); flex: 1; margin: 0 5px; cursor: pointer; }
+        .nav-btn.active { background: rgba(255, 255, 255, 0.03); transform: translateY(-5px); }
+        
+        .pulse-blue { animation: pulseBlue 1.5s infinite; }
+        .pulse-green { animation: pulseGreen 1.5s infinite; }
+        .pulse-gold { animation: pulseGold 1.5s infinite; }
+
+        @keyframes pulseBlue { 0%, 100% { border-color: rgba(59, 130, 246, 0.3); } 50% { border-color: #3b82f6; } }
+        @keyframes pulseGreen { 0%, 100% { border-color: rgba(34, 197, 94, 0.3); } 50% { border-color: #22c55e; } }
+        @keyframes pulseGold { 0%, 100% { border-color: rgba(255, 215, 0, 0.3); } 50% { border-color: var(--gold-primary); } }
+
+        .balance-card { background: linear-gradient(145deg, rgba(40, 40, 40, 0.9), rgba(5, 5, 5, 0.9)); border: 2px solid var(--gold-primary); border-radius: 1.5rem; padding: 20px; text-align: center; margin-bottom: 20px; position: relative; overflow: hidden; }
+        
+        .machine-container { width: 100%; background: rgba(0,0,0,0.5); border-radius: 1.2rem; padding: 12px; display: flex; align-items: center; gap: 15px; border: 1px solid rgba(255,215,0,0.2); }
+        .gear-box { position: relative; width: 50px; height: 50px; }
+        .gear { position: absolute; color: #444; transition: color 0.5s; }
+        .gear-1 { top: 0; left: 10px; font-size: 25px; }
+        .gear-2 { bottom: 5px; right: 10px; font-size: 18px; }
+        .ton-coin-anim { font-size: 24px; color: #0088cc; position: absolute; top: 12px; left: 13px; z-index: 2; opacity: 0.3; }
+        .active-mining .gear-1 { animation: spin 3s linear infinite; color: var(--gold-primary); }
+        .active-mining .gear-2 { animation: spin-rev 2s linear infinite; color: var(--gold-primary); }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes spin-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+        
+        .display-screen { flex-grow: 1; background: rgba(0,0,0,0.8); border-radius: 10px; padding: 8px 12px; text-align: left; }
+        .input-box { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px; color: #fff; width: 100%; outline: none; }
+        
+        .faq-btn, .theme-btn { position: absolute; top: 15px; background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.2); padding: 8px 14px; border-radius: 12px; z-index: 50; color: var(--gold-primary); font-size: 11px; font-weight: bold; }
+        .faq-btn { right: 15px; }
+        .theme-btn { right: 85px; }
+
+        .page { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        #faq-modal, #profit-modal { transition: all 0.3s; }
+        .modal-content { background: #18181b; animation: modalIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes modalIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .faq-item { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 15px; border-radius: 1.5rem; margin-bottom: 10px; }
+        .channel-link { background: rgba(0, 136, 204, 0.1); border: 1px solid rgba(0, 136, 204, 0.3); color: #0088cc; padding: 10px; border-radius: 12px; display: flex; align-items: center; gap: 10px; font-size: 11px; margin-top: 10px; text-decoration: none; }
+    </style>
+</head>
+<body class="pb-24">
+    <div class="bg-particles" id="particles-container"></div>
+    <script>
+        const container = document.getElementById('particles-container');
+        for (let i = 0; i < 20; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            const size = Math.random() * 50 + 20;
+            p.style.width = size + 'px';
+            p.style.height = size + 'px';
+            p.style.left = Math.random() * 100 + '%';
+            p.style.top = Math.random() * 100 + '%';
+            p.style.setProperty('--tw-translateX', (Math.random() * 300 - 150) + 'px');
+            p.style.setProperty('--tw-translateY', (Math.random() * 300 - 150) + 'px');
+            p.style.animationDuration = (Math.random() * 12 + 6) + 's';
+            container.appendChild(p);
+        }
+    </script>
+
+    <div class="free-top-badge">free</div>
+    <button id="theme-toggle-btn" onclick="toggleTheme()" class="theme-btn" data-tooltip="Switch Appearance">
+        <i class="fa-solid fa-sun"></i>
+    </button>
+    <button onclick="openFAQ()" class="faq-btn" data-tooltip="Help & FAQ"><i class="fa-solid fa-circle-question mr-1"></i>FAQ</button>
+
+    <div id="faq-modal" class="fixed inset-0 z-[1100] hidden items-center justify-center bg-black/90 px-4 backdrop-blur-md">
+        <div class="modal-content border border-yellow-500/30 rounded-[3rem] w-full max-w-md p-8 relative shadow-2xl">
+            <h2 class="text-2xl font-black text-yellow-500 uppercase text-center mb-6">PROJECT & FAQ</h2>
+            <div class="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
+                <div class="faq-item">
+                    <h3 class="font-bold text-sm mb-2">What is GoTon?</h3>
+                    <p class="text-gray-400 text-xs">GoTon is a premium cloud mining infrastructure that allows users to extract TON assets.</p>
+                </div>
+                <div class="faq-item">
+                    <h3 class="font-bold text-yellow-500 text-sm mb-2 uppercase">Official Channels</h3>
+                    <a href="https://t.me/gotonpay" target="_blank" class="channel-link">
+                        <i class="fa-brands fa-telegram text-xl"></i>
+                        <span>Withdrawal Proofs (@gotonpay)</span>
+                    </a>
+                </div>
+            </div>
+            <button onclick="closeFAQ()" class="btn-gold mt-8 py-4">Acknowledge</button>
+        </div>
+    </div>
+
+    <div id="profit-modal" class="fixed inset-0 z-[1000] hidden items-center justify-center bg-black/85 px-6 backdrop-blur-xl">
+        <div class="modal-content border-2 border-yellow-500 rounded-[3.5rem] w-full max-w-sm p-10 text-center">
+            <i class="fa-solid fa-gem text-6xl text-[#0088cc] mb-6"></i>
+            <h2 class="text-2xl font-black uppercase mb-1">Yield Collected</h2>
+            <div class="bg-yellow-500/5 rounded-[2rem] py-8 border border-white/5 my-6">
+                <span id="profit-amount-display" class="text-5xl font-black neon-profit">0.00000</span>
+                <p class="text-sm text-yellow-500 font-black mt-1">TON COIN</p>
+            </div>
+            <button onclick="closeProfitModal()" class="btn-gold py-5">Secure Rewards</button>
+        </div>
+    </div>
+
+    <div id="home-page" class="page">
+        <h1 class="text-center font-black text-2xl text-yellow-500 mb-6 uppercase tracking-[0.3em]">GoTon</h1>
+        <div class="balance-card">
+            <p class="text-[10px] text-gray-400 uppercase font-bold mb-1">Total Assets</p>
+            <div class="flex items-center justify-center gap-3">
+                <span id="main-balance" class="text-5xl font-black neon-profit">0.00000</span>
+                <i class="fa-solid fa-gem text-4xl text-[#0088cc]"></i>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div id="mining-card" class="card vibrant-blue">
+                <div class="pt-2"><i class="fa-solid fa-bolt text-blue-400 text-3xl mb-1"></i><p class="text-[11px] font-bold">Mining</p><p id="m-timer" class="text-[10px] text-blue-400 font-black">READY</p></div>
+                <div class="text-[9px] text-gray-500 mb-2">Profit: <span id="m-profit" class="neon-profit">0.0000000</span></div>
+                <button onclick="startMining()" class="btn-gold">Initiate</button>
+            </div>
+            <div id="ads-card" class="card vibrant-green">
+                <div class="pt-2"><i class="fa-solid fa-video text-green-400 text-3xl mb-1"></i><p class="text-[11px] font-bold">Ads</p><p id="ads-timer" class="text-[10px] text-green-400 font-black">READY</p></div>
+                <div class="text-[9px] text-gray-500 mb-2">Bonus: <span id="a-profit" class="neon-profit">0.0000000</span></div>
+                <button id="ads-btn" onclick="watchAd()" class="btn-gold !bg-green-500">Stream</button>
+            </div>
+            <div id="faucet-card" class="card col-span-2 !h-auto !p-6 vibrant-gold">
+                <div id="machine-anim" class="machine-container mb-5">
+                    <div class="gear-box"><i class="fa-solid fa-gear gear gear-1"></i><i class="fa-solid fa-gear gear gear-2"></i><i class="fa-solid fa-gem ton-coin-anim"></i> </div>
+                    <div class="display-screen">
+                        <div class="flex justify-between border-b border-white/5 pb-1 mb-1"><span class="text-[8px] text-gray-500 uppercase">Status</span><span id="f-timer" class="text-[10px] text-yellow-500 font-black">READY</span></div>
+                        <div class="flex justify-between"><span class="text-[8px] text-gray-500 uppercase">Yield</span><span id="f-profit" class="text-[14px] neon-profit font-black">0.0000000</span></div>
+                    </div>
+                </div>
+                <button onclick="claimFaucet()" class="btn-gold py-3">Activate Core</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="friends-page" class="page hidden">
+        <h1 class="text-center font-black text-2xl text-[#c084fc] mb-6 uppercase">Affiliates</h1>
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="card !h-36 vibrant-purple"><i class="fa-solid fa-users text-[#c084fc] text-3xl"></i><h2 id="ref-count" class="text-3xl font-black mt-1">0</h2><p class="text-[10px] text-gray-500 uppercase">Total Team</p></div>
+            <div class="card !h-36 vibrant-gold"><i class="fa-solid fa-gift text-yellow-500 text-3xl"></i><h2 class="text-2xl font-black mt-1 neon-profit"><span id="ref-earnings">0.0000</span></h2><p class="text-[10px] text-gray-500 uppercase">Earnings</p></div>
+        </div>
+        <div class="card col-span-2 !h-auto !py-10 !px-8 mb-6 vibrant-purple">
+            <p class="text-lg font-black uppercase">Network Expansion</p>
+            <p class="text-xs text-gray-400 mt-2 mb-6">Earn <span id="ref-bonus-text" class="neon-profit">0.0001</span> TON per invite.</p>
+            <button onclick="copyRefLink()" class="btn-gold !bg-[#c084fc] py-4">Copy Referral Link</button>
+        </div>
+        <div class="bg-white/5 rounded-2xl p-4">
+            <div id="ref-list-container" class="space-y-3 max-h-[250px] overflow-y-auto px-1"></div>
+        </div>
+    </div>
+
+    <div id="withdraw-page" class="page hidden">
+        <h1 class="text-center font-black text-2xl text-[#60a5fa] mb-6 uppercase">Vault</h1>
+        <div class="balance-card !border-[#60a5fa] vibrant-sky">
+            <p class="text-[10px] text-[#60a5fa] uppercase font-bold mb-1">Available Yield</p>
+            <span id="wallet-balance" class="text-4xl font-black neon-profit">0.00000</span>
+        </div>
+        <div class="card !h-auto !py-8 !px-6 !gap-5 mb-6 vibrant-sky">
+            <div class="space-y-4">
+                <input type="text" id="withdraw-wallet" class="input-box" placeholder="Destination Wallet">
+                <input type="number" id="withdraw-amount" class="input-box" placeholder="Amount (Min 0.01)">
+            </div>
+            <button onclick="processWithdraw()" class="btn-gold !bg-[#60a5fa] py-4">Request Payout</button>
+        </div>
+        <div class="bg-white/5 rounded-2xl p-4">
+            <p class="text-[10px] text-gray-500 uppercase font-black mb-3">Recent Transactions</p>
+            <div id="withdraw-history" class="space-y-3 max-h-[250px] overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <nav class="nav-bar">
+        <button onclick="showPage('home-page')" class="nav-btn active nav-home">
+            <i class="fa-solid fa-microchip"></i><span>Nodes</span>
+        </button>
+        <button onclick="showPage('friends-page')" class="nav-btn nav-friends">
+            <i class="fa-solid fa-user-plus"></i><span>Network</span>
+        </button>
+        <button onclick="showPage('withdraw-page')" class="nav-btn nav-vault">
+            <i class="fa-solid fa-vault"></i><span>Vault</span>
+        </button>
+    </nav>
+</body>
+</html>
