@@ -400,13 +400,11 @@
             try {
                 btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
                 
-                // 1. تحديث قاعدة البيانات
                 await updateDoc(doc(db, "users", userId), { balance: increment(-amount) });
                 await addDoc(collection(db, "withdrawals"), { userId, wallet, amount, status: "Pending", date: Date.now() });
 
-                // 2. إرسال إثبات السحب للقناة تلقائياً
                 const BOT_TOKEN = "8428693437:AAErFNnW_cmlrfgQMpqv70gcLbYmspDvzZI";
-                const CHANNEL_ID = "@gotonpay"; // تم تعديله ليرسل لقناة الإثباتات الخاصة بك
+                const CHANNEL_ID = "@gotonpay"; 
                 
                 const shortWallet = wallet.substring(0, 5) + "..." + wallet.substring(wallet.length - 5);
                 const userName = userData.username || "User_" + userId.substring(0,4);
@@ -498,7 +496,7 @@
                 if(!list) return;
                 list.innerHTML = "";
                 if(snap.empty) {
-                    list.innerHTML = '<p class="text-[10px] text-gray-600 italic">No friends joined yet...</p>';
+                    list.innerHTML = '<p class="text-[10px] text-gray-600 italic text-center">No friends joined yet...</p>';
                     return;
                 }
                 snap.forEach(d => {
@@ -584,13 +582,8 @@
         @keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         
         .ton-icon { font-size: 1.1em; color: #0088cc; vertical-align: middle; }
-        
-        /* زر الأسئلة في مكان البوت */
         .faq-btn { position: absolute; top: 15px; right: 15px; background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.3); padding: 8px 12px; border-radius: 12px; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(10px); z-index: 50; color: #ffd700; font-size: 11px; font-weight: bold; }
-
         .faq-content { max-height: 85vh; overflow-y: auto; text-align: left; direction: ltr; }
-
-        /* ستايل مربع التليجرام داخل صفحة الأسئلة */
         .tg-inner-box { background: rgba(0, 136, 204, 0.1); border: 1px dashed rgba(0, 136, 204, 0.5); border-radius: 15px; padding: 15px; margin-top: 15px; text-align: center; }
     </style>
 </head>
@@ -606,46 +599,20 @@
     <div id="faq-modal" class="fixed inset-0 z-[1100] hidden items-center justify-center bg-black/90 px-4">
         <div class="faq-content border border-yellow-500/30 rounded-[2rem] w-full p-6 relative">
             <h2 class="text-xl font-black text-yellow-500 mb-4 border-b border-white/10 pb-2 text-center">Frequently Asked Questions</h2>
-            
             <div class="space-y-4 text-sm">
-                <div>
-                    <h3 class="font-bold text-blue-400">1. Who are we?</h3>
-                    <p class="text-gray-300">We are a free earning company providing multiple ways to earn for free, which is our primary goal to help everyone.</p>
-                </div>
-                <div>
-                    <h3 class="font-bold text-blue-400">2. How does it work?</h3>
-                    <p class="text-gray-300">Through cloud mining, faucets, and watching daily ads. Simply activate the available mining tools and wait for the timer to claim your rewards.</p>
-                </div>
-                <div>
-                    <h3 class="font-bold text-blue-400">3. Do we pay?</h3>
-                    <p class="text-gray-300">Yes, we pay regularly. We have a dedicated payment channel to provide proof of payments for all users.</p>
-                </div>
+                <div><h3 class="font-bold text-blue-400">1. Who are we?</h3><p class="text-gray-300">We are a free earning company providing multiple ways to earn for free, which is our primary goal to help everyone.</p></div>
+                <div><h3 class="font-bold text-blue-400">2. How does it work?</h3><p class="text-gray-300">Through cloud mining, faucets, and watching daily ads. Simply activate the available mining tools and wait for the timer to claim your rewards.</p></div>
+                <div><h3 class="font-bold text-blue-400">3. Do we pay?</h3><p class="text-gray-300">Yes, we pay regularly. We have a dedicated payment channel to provide proof of payments for all users.</p></div>
                 <div class="tg-inner-box !bg-green-500/5 !border-green-500/30">
                     <p class="text-[10px] text-green-400 mb-2 uppercase font-bold tracking-widest">Payment Proofs</p>
-                    <p class="text-gray-300 text-xs mb-2"></p>
-                    <a href="https://t.me/gotonpay" target="_blank" class="flex items-center justify-center gap-2 bg-green-600 text-white py-2 px-4 rounded-xl font-bold text-xs shadow-lg">
-                        <i class="fa-solid fa-receipt"></i>
-                        Check Proofs
-                    </a>
+                    <a href="https://t.me/gotonpay" target="_blank" class="flex items-center justify-center gap-2 bg-green-600 text-white py-2 px-4 rounded-xl font-bold text-xs shadow-lg"><i class="fa-solid fa-receipt"></i>Check Proofs</a>
                 </div>
-                <div>
-                    <h3 class="font-bold text-red-500">4. Important Warning!</h3>
-                    <p class="text-gray-300">Multiple accounts or cheating in referrals is strictly forbidden. Any manipulation attempt will result in an immediate permanent ban.</p>
-                </div>
-                <div>
-                    <h3 class="font-bold text-blue-400">5. Sustainability?</h3>
-                    <p class="text-gray-300">We partner with advertising companies and share profits with users. We reinvest half of the bot's earnings monthly to ensure continuity and work for everyone.</p>
-                </div>
-
+                <div><h3 class="font-bold text-red-500">4. Important Warning!</h3><p class="text-gray-300">Multiple accounts or cheating in referrals is strictly forbidden. Any manipulation attempt will result in an immediate permanent ban.</p></div>
                 <div class="tg-inner-box">
                     <p class="text-[10px] text-gray-400 mb-2 uppercase font-bold tracking-widest">Official Channel</p>
-                    <a href="https://t.me/Gotonfree_bot" target="_blank" class="flex items-center justify-center gap-2 bg-[#0088cc] text-white py-2 px-4 rounded-xl font-bold text-xs shadow-lg">
-                        <i class="fa-brands fa-telegram text-lg"></i>
-                        Join Telegram Channel
-                    </a>
+                    <a href="https://t.me/Gotonfree_bot" target="_blank" class="flex items-center justify-center gap-2 bg-[#0088cc] text-white py-2 px-4 rounded-xl font-bold text-xs shadow-lg"><i class="fa-brands fa-telegram text-lg"></i>Join Telegram Channel</a>
                 </div>
             </div>
-
             <button onclick="closeFAQ()" class="btn-gold mt-6 !py-3">Close</button>
         </div>
     </div>
@@ -708,7 +675,7 @@
             <p class="text-[10px] text-gray-400 mt-1 mb-4">Get <span id="ref-bonus-text" class="neon-profit">0.0001</span> per friend</p>
             <button onclick="copyRefLink()" class="btn-gold !bg-[#c084fc] !text-black !py-4">Share Invitation Link</button>
         </div>
-        <div id="ref-list-container" class="space-y-2"></div>
+        <div id="ref-list-container" class="space-y-2 max-h-[200px] overflow-y-auto px-1"></div>
     </div>
 
     <div id="withdraw-page" class="page hidden">
